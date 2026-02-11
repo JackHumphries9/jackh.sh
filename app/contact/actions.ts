@@ -1,62 +1,40 @@
 "use server";
 
-export type SendMessageResult =
-    | { success: true }
-    | { success: false; errors: Record<string, string[]> };
-
 import sendWebhook from "@/lib/discord_webhook";
 import { z } from "zod";
+import { serverAction } from "use-server-action/server";
 
 const schema = z.object({
-    email: z
-        .string({
-            invalid_type_error: "Invalid Email",
-        })
-        .email(),
-    name: z.string().min(2),
-    message: z.string().min(10),
+    email: z.email({
+        error: "Invalid Email",
+    }),
+    name: z.string().min(2, "Name must be at least 2 characters"),
+    message: z.string().min(10, "Message must be at least 10 characters"),
 });
 
-export async function sendMessage(
-    formData: FormData,
+async function action(
+    data: z.input<typeof schema>,
 ): Promise<
     { success: true } | { success: false; errors: Record<string, string[]> }
 > {
-    try {
-        const validatedFields = schema.safeParse({
-            email: formData.get("email"),
-            name: formData.get("name"),
-            message: formData.get("message"),
-        });
+    const validatedFields = schema.safeParse(data);
 
-        if (!validatedFields.success) {
-            return {
-                success: false,
-                errors: validatedFields.error.flatten().fieldErrors,
-            };
-        }
-
-        const { name, email, message } = validatedFields.data;
-
-        await sendWebhook({
-            embeds: [
-                {
-                    title: "New Website Message",
-                    description: `From ${name} (${email})\n\n>${message}`,
-                },
-            ],
-        });
-    } catch (e) {
-        console.log(e);
-        return {
-            success: false,
-            errors: {
-                generic: [
-                    "Something went wrong, please try again or send me an email instead.",
-                ],
-            },
-        };
+    if (!validatedFields.success) {
+        throw new Error(validatedFields.error.issues[0].message);
     }
+
+    const { name, email, message } = validatedFields.data;
+
+    await sendWebhook({
+        embeds: [
+            {
+                title: "New Website Message",
+                description: `From ${name} (${email})\n\n>${message}`,
+            },
+        ],
+    });
 
     return { success: true };
 }
+
+export const sendMessageAction = serverAction(action);

@@ -1,25 +1,19 @@
 "use client";
 
-import { useState, useTransition, FormEvent, ChangeEvent } from "react";
-import { sendMessage } from "@/app/contact/actions";
+import { useState, ChangeEvent } from "react";
+import { sendMessageAction } from "@/app/contact/actions";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { AlertCircle, Check } from "lucide-react";
 import { toast } from "sonner";
+import { useServerAction } from "use-server-action";
 
 type FormState = {
     name: string;
     email: string;
     message: string;
-};
-
-type FieldErrors = {
-    name?: string[];
-    email?: string[];
-    message?: string[];
-    generic?: string[];
 };
 
 export default function ContactForm() {
@@ -29,9 +23,6 @@ export default function ContactForm() {
         message: "",
     });
 
-    const [errors, setErrors] = useState<FieldErrors>({});
-    const [pending, startTransition] = useTransition();
-
     const handleChange = (
         e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
     ) => {
@@ -39,44 +30,34 @@ export default function ContactForm() {
         setFormState((prev) => ({ ...prev, [id]: value }));
     };
 
-    const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-
-        const formData = new FormData();
-        formData.append("name", formState.name);
-        formData.append("email", formState.email);
-        formData.append("message", formState.message);
-
-        startTransition(async () => {
-            const result = await sendMessage(formData);
-            if (!result.success) {
-                setErrors(result.errors);
-            } else {
-                setFormState({ name: "", email: "", message: "" });
-                setErrors({});
-                toast("Your message has been sent successfully", {
-                    icon: <Check />,
-                });
-            }
-        });
-    };
+    const action = useServerAction({
+        action: sendMessageAction,
+        onSuccess: () => {
+            setFormState({ name: "", email: "", message: "" });
+            toast("Your message has been sent successfully", {
+                icon: <Check />,
+            });
+        },
+    });
 
     return (
         <form
             className="space-y-6 w-full md:max-w-md max-w-full"
-            onSubmit={handleSubmit}
+            onSubmit={(e) => {
+                e.preventDefault();
+                action.execute(formState);
+            }}
         >
-            {errors.generic && (
+            {action.isError && (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>Error</AlertTitle>
                     <AlertDescription>
-                        {errors.generic
-                            ? errors.generic
-                            : "Something went wrong. Please try again."}
+                        {action.error ?? "Something went wrong."}
                     </AlertDescription>
                 </Alert>
             )}
+
             <div className="space-y-2">
                 <label htmlFor="name" className="text-sm font-medium pb-4">
                     Name
@@ -88,13 +69,8 @@ export default function ContactForm() {
                     className="mt-2"
                     placeholder="Your name"
                     required
-                    disabled={pending}
+                    disabled={action.isPending}
                 />
-                {errors.name && (
-                    <p className="text-red-500 text-sm">
-                        {errors.name.join(", ")}
-                    </p>
-                )}
             </div>
             <div className="space-y-2">
                 <label htmlFor="email" className="text-sm font-medium">
@@ -107,13 +83,8 @@ export default function ContactForm() {
                     className="mt-2"
                     placeholder="Your email"
                     required
-                    disabled={pending}
+                    disabled={action.isPending}
                 />
-                {errors.email && (
-                    <p className="text-red-500 text-sm">
-                        {errors.email.join(", ")}
-                    </p>
-                )}
             </div>
             <div className="space-y-2">
                 <label htmlFor="message" className="text-sm font-medium pb-4">
@@ -127,17 +98,12 @@ export default function ContactForm() {
                     placeholder="Your message"
                     rows={6}
                     required
-                    disabled={pending}
+                    disabled={action.isPending}
                 />
-                {errors.message && (
-                    <p className="text-red-500 text-sm">
-                        {errors.message.join(", ")}
-                    </p>
-                )}
             </div>
             <Button
                 type="submit"
-                loading={pending}
+                loading={action.isPending}
                 className="w-full bg-black dark:bg-white dark:text-black text-white hover:bg-gray-800 hover:dark:bg-gray-200 duration-400 cursor-pointer"
             >
                 Send Message
